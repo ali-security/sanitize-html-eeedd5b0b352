@@ -910,6 +910,167 @@ describe('sanitizeHtml', function() {
       '<img src="fallback.jpg" srcset="/upload/f_auto,q_auto:eco,c_fit,w_1460,h_2191/abc.jpg 1460w, /upload/f_auto,q_auto:eco,c_fit,w_1360,h_2041/abc.jpg" />'
     );
   });
+  it('should drop javascript: in form action', function() {
+    assert.equal(
+      sanitizeHtml('<form action="javascript:alert(1)"><button>x</button></form>', {
+        allowedTags: [ 'form', 'button' ],
+        allowedAttributes: { form: [ 'action' ] }
+      }),
+      '<form><button>x</button></form>'
+    );
+  });
+  it('should allow http(s) in form action', function() {
+    assert.equal(
+      sanitizeHtml('<form action="https://example.com/submit"><button>x</button></form>', {
+        allowedTags: [ 'form', 'button' ],
+        allowedAttributes: { form: [ 'action' ] }
+      }),
+      '<form action="https://example.com/submit"><button>x</button></form>'
+    );
+  });
+  it('should drop javascript: in button formaction', function() {
+    assert.equal(
+      sanitizeHtml('<button formaction="javascript:alert(1)">x</button>', {
+        allowedTags: [ 'button' ],
+        allowedAttributes: { button: [ 'formaction' ] }
+      }),
+      '<button>x</button>'
+    );
+  });
+  it('should allow http(s) in button formaction', function() {
+    assert.equal(
+      sanitizeHtml('<button formaction="https://example.com/submit">x</button>', {
+        allowedTags: [ 'button' ],
+        allowedAttributes: { button: [ 'formaction' ] }
+      }),
+      '<button formaction="https://example.com/submit">x</button>'
+    );
+  });
+  it('should drop javascript: in object data', function() {
+    assert.equal(
+      sanitizeHtml('<object data="javascript:alert(1)"></object>', {
+        allowedTags: [ 'object' ],
+        allowedAttributes: { object: [ 'data' ] }
+      }),
+      '<object></object>'
+    );
+  });
+  it('should allow http(s) in object data', function() {
+    assert.equal(
+      sanitizeHtml('<object data="https://example.com/file.pdf"></object>', {
+        allowedTags: [ 'object' ],
+        allowedAttributes: { object: [ 'data' ] }
+      }),
+      '<object data="https://example.com/file.pdf"></object>'
+    );
+  });
+  it('should drop javascript: in SVG xlink:href', function() {
+    assert.equal(
+      sanitizeHtml('<svg><a xlink:href="javascript:alert(1)"><text>x</text></a></svg>', {
+        allowedTags: [ 'svg', 'a', 'text' ],
+        allowedAttributes: { a: [ 'xlink:href' ] }
+      }),
+      '<svg><a><text>x</text></a></svg>'
+    );
+  });
+  it('should allow http(s) in SVG xlink:href', function() {
+    assert.equal(
+      sanitizeHtml('<svg><a xlink:href="https://example.com/"><text>x</text></a></svg>', {
+        allowedTags: [ 'svg', 'a', 'text' ],
+        allowedAttributes: { a: [ 'xlink:href' ] }
+      }),
+      '<svg><a xlink:href="https://example.com/"><text>x</text></a></svg>'
+    );
+  });
+  it('should drop bogus imagesrcset', function() {
+    assert.equal(
+      sanitizeHtml('<link rel="preload" as="image" imagesrcset="foo.jpg 1x, javascript:alert(1) 2x" />', {
+        allowedTags: [ 'link' ],
+        allowedAttributes: { link: [ 'rel', 'as', 'imagesrcset' ] },
+        selfClosing: [ 'link' ]
+      }),
+      '<link rel="preload" as="image" imagesrcset="foo.jpg 1x" />'
+    );
+  });
+  it('should accept valid imagesrcset', function() {
+    assert.equal(
+      sanitizeHtml('<link rel="preload" as="image" imagesrcset="foo.jpg 1x, bar.jpg 2x" />', {
+        allowedTags: [ 'link' ],
+        allowedAttributes: { link: [ 'rel', 'as', 'imagesrcset' ] },
+        selfClosing: [ 'link' ]
+      }),
+      '<link rel="preload" as="image" imagesrcset="foo.jpg 1x, bar.jpg 2x" />'
+    );
+  });
+  it('should drop javascript: in video poster', function() {
+    assert.equal(
+      sanitizeHtml('<video poster="javascript:alert(1)"></video>', {
+        allowedTags: [ 'video' ],
+        allowedAttributes: { video: [ 'poster' ] }
+      }),
+      '<video></video>'
+    );
+    assert.equal(
+      sanitizeHtml('<video poster="https://example.com/poster.jpg"></video>', {
+        allowedTags: [ 'video' ],
+        allowedAttributes: { video: [ 'poster' ] }
+      }),
+      '<video poster="https://example.com/poster.jpg"></video>'
+    );
+  });
+  it('should drop javascript: in table background', function() {
+    assert.equal(
+      sanitizeHtml('<table background="javascript:alert(1)"></table>', {
+        allowedTags: [ 'table' ],
+        allowedAttributes: { table: [ 'background' ] }
+      }),
+      '<table></table>'
+    );
+  });
+  it('should drop javascript: in a ping', function() {
+    assert.equal(
+      sanitizeHtml('<a href="https://example.com/" ping="javascript:alert(1)">x</a>', {
+        allowedTags: [ 'a' ],
+        allowedAttributes: { a: [ 'href', 'ping' ] }
+      }),
+      '<a href="https://example.com/">x</a>'
+    );
+  });
+  it('should drop javascript: in img dynsrc and lowsrc', function() {
+    assert.equal(
+      sanitizeHtml('<img dynsrc="javascript:alert(1)" lowsrc="javascript:alert(2)" />', {
+        allowedTags: [ 'img' ],
+        allowedAttributes: { img: [ 'dynsrc', 'lowsrc' ] }
+      }),
+      '<img />'
+    );
+  });
+  it('should drop javascript: in the remaining URL attributes checked by default', function() {
+    const cases = [
+      [ 'iframe', 'longdesc' ],
+      [ 'object', 'usemap' ],
+      [ 'object', 'codebase' ],
+      [ 'object', 'classid' ],
+      [ 'object', 'archive' ],
+      [ 'head', 'profile' ],
+      [ 'html', 'manifest' ],
+      [ 'div', 'itemid' ]
+    ];
+    cases.forEach(function(c) {
+      const tag = c[0];
+      const attr = c[1];
+      const allowedAttributes = {};
+      allowedAttributes[tag] = [ attr ];
+      assert.equal(
+        sanitizeHtml('<' + tag + ' ' + attr + '="javascript:alert(1)"></' + tag + '>', {
+          allowedTags: [ tag ],
+          allowedAttributes: allowedAttributes
+        }),
+        '<' + tag + '></' + tag + '>',
+        attr + ' on ' + tag
+      );
+    });
+  });
 
   it('text from transformTags should not specify tags', function() {
     const input = '<input value="&lt;script&gt;alert(1)&lt;/script&gt;">';
