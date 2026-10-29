@@ -229,18 +229,32 @@ function sanitizeHtml(html, options, _recursing) {
   let transformMap;
   let skipText;
   let skipTextDepth;
+  // Browsers (with scripting enabled) parse <noscript> content as raw text up
+  // to the first `</noscript`, but htmlparser2 parses it as markup, so an end
+  // tag for an ancestor can make htmlparser2 close the <noscript> implicitly
+  // much earlier. `rawTextEnd` is the source offset where the browser ends the
+  // <noscript> being discarded, and `skipRawText` is set while htmlparser2 has
+  // already closed it but the browser has not, so that we keep discarding
+  // until we reach that offset (GHSA-x3q4-9hxx-gx8m).
+  let rawTextEnd;
+  let skipRawText;
   let addedText = false;
 
   initializeState();
 
   const parser = new htmlparser.Parser({
     onopentag: function(name, attribs) {
+      updateRawTextRegion();
+
       // If `enforceHtmlBoundary` is `true` and this has found the opening
       // `html` tag, reset the state.
       if (options.enforceHtmlBoundary && name === 'html') {
         initializeState();
       }
 
+      if (skipRawText) {
+        return;
+      }
       if (skipText) {
         skipTextDepth++;
         return;
@@ -282,6 +296,9 @@ function sanitizeHtml(html, options, _recursing) {
           if (nonTextTagsArray.indexOf(name) !== -1) {
             skipText = true;
             skipTextDepth = 1;
+            if (frame.tag.toLowerCase() === 'noscript') {
+              rawTextEnd = findRawTextEnd('noscript', parser.endIndex + 1);
+            }
           }
         }
         skipMap[depth] = true;
@@ -525,7 +542,8 @@ function sanitizeHtml(html, options, _recursing) {
       }
     },
     ontext: function(text) {
-      if (skipText) {
+      updateRawTextRegion();
+      if (skipText || skipRawText) {
         return;
       }
       const lastFrame = stack[stack.length - 1];
@@ -560,10 +578,24 @@ function sanitizeHtml(html, options, _recursing) {
     },
     onclosetag: function(name, isImplied) {
 
-      if (skipText) {
+      updateRawTextRegion();
+      if (skipRawText) {
+        // Still inside the browser's raw text: only close elements that were
+        // opened before the discarded region, so the output stays balanced.
+        const lastFrame = stack[stack.length - 1];
+        if (!lastFrame || lastFrame.tag !== name) {
+          return;
+        }
+      } else if (skipText) {
         skipTextDepth--;
         if (!skipTextDepth) {
           skipText = false;
+          if (rawTextEnd !== null) {
+            // htmlparser2 closed the element implicitly (e.g. an ancestor's
+            // end tag) before the browser would. Close its frame below, but
+            // keep discarding up to the browser's end tag.
+            skipRawText = true;
+          }
         } else {
           return;
         }
@@ -642,6 +674,27 @@ function sanitizeHtml(html, options, _recursing) {
     transformMap = {};
     skipText = false;
     skipTextDepth = 0;
+    rawTextEnd = null;
+    skipRawText = false;
+  }
+
+  // Leave the raw text region once the parser reaches the offset where the
+  // browser ends it.
+  function updateRawTextRegion() {
+    if (rawTextEnd !== null && parser.startIndex >= rawTextEnd) {
+      rawTextEnd = null;
+      skipRawText = false;
+    }
+  }
+
+  // Offset of the end tag that ends a raw text element in a browser: the
+  // first case-insensitive `</name` followed by HTML whitespace, `/` or `>`.
+  // With no such end tag the element runs to the end of the input.
+  function findRawTextEnd(tagName, from) {
+    const re = new RegExp('</' + tagName + '[\\t\\n\\f\\r />]', 'ig');
+    re.lastIndex = from;
+    const match = re.exec(html);
+    return match ? match.index : Infinity;
   }
 
   function escapeHtml(s, quote) {

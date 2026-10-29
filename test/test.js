@@ -144,6 +144,20 @@ describe('sanitizeHtml', function() {
   it('should discard allowed tags within a fibble element if fibble is specified for nonTextTags', function() {
     assert.equal(sanitizeHtml('<fibble>Ni<em>f</em>ty</fibble><p>Paragraph</p>', { nonTextTags: [ 'fibble' ] }), '<p>Paragraph</p>');
   });
+  it('should keep discarding noscript content until the browser would end it when noscript is in nonTextTags', function() {
+    const result = sanitizeHtml('<div><noscript></div><img src=x onerror=alert(1)></noscript></div>', {
+      allowedTags: [ 'div', 'img' ],
+      allowedAttributes: { img: [ 'src', 'onerror' ] },
+      nonTextTags: [ 'noscript' ]
+    });
+    assert.equal(result.indexOf('<img'), -1);
+    assert.equal(result.indexOf('onerror'), -1);
+  });
+  it('should still discard properly closed noscript content listed in nonTextTags', function() {
+    assert.equal(sanitizeHtml('<noscript><b>hidden</b></noscript><b>shown</b>', {
+      nonTextTags: [ 'noscript' ]
+    }), '<b>shown</b>');
+  });
   it('should preserve textarea content if textareas are allowed', function() {
     assert.equal(sanitizeHtml('<textarea>Nifty</textarea><p>Paragraph</p>', {
       allowedTags: [ 'textarea', 'p' ]
