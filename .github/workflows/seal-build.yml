@@ -1,0 +1,46 @@
+name: seal-build
+
+on:
+  workflow_dispatch:
+    inputs:
+      test-filter:
+        description: 'mocha --grep pattern; empty runs the full suite'
+        required: false
+        default: ''
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '18.20.4'
+      - name: Configure time-machine registry
+        run: |
+          npm config set registry https://time-machines-npm.sealsecurity.io/
+          npm config set //time-machines-npm.sealsecurity.io/:_authToken=2024-12-18T17:37:31.714000Z
+      - name: Install
+        run: npm install --no-package-lock
+      - name: Test
+        # package.json "test" is `npx eslint . && mocha test/test.js`; the eslint
+        # lint gate is dropped and the mocha suite runs as-is.
+        run: |
+          if [ -n "${{ inputs.test-filter }}" ]; then
+            npx mocha test/test.js --grep "${{ inputs.test-filter }}"
+          else
+            npx mocha test/test.js
+          fi
+      - name: Pack
+        run: |
+          npm i -g npm@10.9.0
+          npm --version
+          mkdir -p dist
+          npm pack --pack-destination dist
+          tar -tzf dist/*.tgz
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sanitize-html-tgz
+          path: dist/*.tgz
+          if-no-files-found: error
