@@ -123,6 +123,15 @@ describe('sanitizeHtml', function() {
   it('should drop the content of textarea elements but keep the closing parent tag, when nested', function() {
     assert.equal(sanitizeHtml('<p>Paragraph<textarea>Nifty</textarea></p>'), '<p>Paragraph</p>');
   });
+  it('should drop the content of disallowed xmp elements rather than re-emit it as live markup', function() {
+    // Regression test for GHSA-rpr9-rxv7-x643: htmlparser2 parses the contents
+    // of <xmp> as raw text, so without xmp in nonTextTags the inner markup
+    // would be re-emitted unescaped and become live HTML.
+    assert.equal(sanitizeHtml('<xmp><script>alert(1)</script></xmp>'), '');
+    assert.equal(sanitizeHtml('<xmp><img src=x onerror=alert(1)></xmp>'), '');
+    assert.equal(sanitizeHtml('<xmp><svg><script>alert(1)</script></svg></xmp>'), '');
+    assert.equal(sanitizeHtml('before<xmp><script>alert(1)</script></xmp>after'), 'beforeafter');
+  });
   it('should retain the content of fibble elements by default', function() {
     assert.equal(sanitizeHtml('<fibble>Nifty</fibble><p>Paragraph</p>'), 'Nifty<p>Paragraph</p>');
   });
@@ -1719,5 +1728,66 @@ describe('sanitizeHtml', function() {
     });
 
     assert.equal(sanitizedHtml, expectedOutput);
+  });
+
+  describe('CVE-2026-44990 regression and raw-text edge cases', function() {
+    // The htmlparser2 8.x tokenizer only treats script, style and title as
+    // raw-text elements, so the contents of xmp and textarea are parsed as
+    // regular markup here and the inner tags go through the usual allowlist
+    // (the disallowed script is dropped or its text escaped). No live markup
+    // can come out either way.
+    it('should escape raw-text inner content when xmp tag is disallowed and discarded under custom nonTextTags', function() {
+      assert.strictEqual(
+        sanitizeHtml('<xmp><script>alert(1)</script></xmp>', {
+          nonTextTags: [ 'script', 'style' ]
+        }),
+        ''
+      );
+    });
+
+    it('should escape raw-text inner content when script tag is disallowed and discarded under empty nonTextTags', function() {
+      assert.strictEqual(
+        sanitizeHtml('<script><svg onload=alert(1)></script>', {
+          nonTextTags: []
+        }),
+        '&lt;svg onload=alert(1)&gt;'
+      );
+    });
+
+    it('should escape raw-text inner content when textarea tag is disallowed and discarded', function() {
+      assert.strictEqual(
+        sanitizeHtml('<textarea><script>alert(1)</script></textarea>', {
+          nonTextTags: []
+        }),
+        'alert(1)'
+      );
+    });
+
+    it('should escape raw-text inner content when style tag is disallowed and discarded', function() {
+      assert.strictEqual(
+        sanitizeHtml('<style><a onload=alert(1)></style>', {
+          nonTextTags: []
+        }),
+        '&lt;a onload=alert(1)&gt;'
+      );
+    });
+
+    it('should handle malformed or unclosed raw-text tags correctly', function() {
+      assert.strictEqual(
+        sanitizeHtml('<xmp><script>alert(1)', {
+          nonTextTags: [ 'script', 'style' ]
+        }),
+        ''
+      );
+    });
+
+    it('should handle sibling raw-text elements correctly without leaking states', function() {
+      assert.strictEqual(
+        sanitizeHtml('<noembed><script>alert(1)</script></noembed><noscript><style>body{}</style></noscript>', {
+          nonTextTags: []
+        }),
+        'alert(1)body{}'
+      );
+    });
   });
 });

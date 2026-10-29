@@ -132,11 +132,16 @@ function sanitizeHtml(html, options, _recursing) {
   // the text when the tag is disallowed makes sense for other reasons.
   // If we are not allowing these tags, we should drop their content too.
   // For other tags you would drop the tag but keep its content.
+  // `xmp` is included because htmlparser2 treats it as a raw-text element,
+  // so markup inside is parsed as text on input but would otherwise be
+  // re-emitted unescaped via the `ontext` branch below, allowing XSS bypass
+  // when `xmp` is disallowed (which is the default).
   const nonTextTagsArray = options.nonTextTags || [
     'script',
     'style',
     'textarea',
-    'option'
+    'option',
+    'xmp'
   ];
   let allowedAttributesMap;
   let allowedAttributesGlobMap;
@@ -523,7 +528,7 @@ function sanitizeHtml(html, options, _recursing) {
 
       if (options.disallowedTagsMode === 'completelyDiscard' && !tagAllowed(tag)) {
         text = '';
-      } else if ((options.disallowedTagsMode === 'discard' || options.disallowedTagsMode === 'completelyDiscard') && ((tag === 'script') || (tag === 'style'))) {
+      } else if (tag && tagAllowed(tag) && (options.disallowedTagsMode === 'discard' || options.disallowedTagsMode === 'completelyDiscard') && ((tag === 'script') || (tag === 'style'))) {
         // htmlparser2 gives us these as-is. Escaping them ruins the content. Allowing
         // script tags is, by definition, game over for XSS protection, so if that's
         // your concern, don't allow them. The same is essentially true for style tags
